@@ -1,0 +1,60 @@
+version: '3.9'
+
+services:
+  web:
+    restart: always
+    build: .
+    command: sh -c "python manage.py makemigrations && python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:80"
+    volumes:
+      - .:./project_name
+    ports:
+      - "80:80"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    env_file:
+      - ./.env
+    depends_on:
+      - pg_db
+      
+  pg_db:
+    image: 'postgres:13.0-alpine'
+    volumes:
+      - pg_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=project_db
+  
+  redis:
+    image: 'redis:7-alpine'
+    ports:
+      - '6378:6379'
+
+  celery_worker:
+    restart: always
+    build: .
+    command: celery -A project_name worker -l INFO --loglevel=info
+    volumes:
+      - .:/project_name
+    env_file:
+      - ./.env
+    depends_on:
+      - redis
+      - web
+
+  flower:
+    build: .
+    command: celery -A project_name flower --port=3333
+    volumes:
+      - .:/project_name
+    env_file:
+      - ./.env
+    ports:
+      - '3333:3333'
+    depends_on:
+      - redis
+      - web
+
+volumes:
+  pg_data:
