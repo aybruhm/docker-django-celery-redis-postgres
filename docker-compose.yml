@@ -1,14 +1,13 @@
-version: '3.9'
-
+version: "3.8"
 services:
   web:
     restart: always
     build: .
-    command: sh -c "python manage.py makemigrations && python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:80"
+    command: sh -c "python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
     volumes:
       - .:./project_name
     ports:
-      - "80:80"
+      - "8000:8000"
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -16,25 +15,39 @@ services:
       - ./.env
     depends_on:
       - pg_db
-      
+
   pg_db:
-    image: 'postgres:13.0-alpine'
+    image: "postgres:13.0-alpine"
     volumes:
       - pg_data:/var/lib/postgresql/data/
     environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=project_db
-  
-  redis:
-    image: 'redis:7-alpine'
+      - POSTGRES_USER=project_name
+      - POSTGRES_PASSWORD=project_name2022
+      - POSTGRES_DB=project_name_db
     ports:
-      - '6378:6379'
+      - "5432"
+
+  redis:
+    image: "redis:7-alpine"
+    ports:
+      - "6379"
 
   celery_worker:
     restart: always
     build: .
-    command: celery -A project_name worker -l INFO --loglevel=info
+    command: python -m celery -A project_name worker -l info
+    volumes:
+      - .:/project_name
+    env_file:
+      - ./.env
+    depends_on:
+      - redis
+      - web
+
+  celery_beat:
+    restart: always
+    build: .
+    command: celery -A project_name beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - .:/project_name
     env_file:
@@ -45,16 +58,17 @@ services:
 
   flower:
     build: .
-    command: celery -A project_name flower --port=3333
+    command: celery -A project_name flower --port=3535
     volumes:
       - .:/project_name
     env_file:
       - ./.env
     ports:
-      - '3333:3333'
+      - "3535:3535"
     depends_on:
       - redis
       - web
+      - celery_worker
 
 volumes:
   pg_data:
